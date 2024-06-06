@@ -1,0 +1,101 @@
+/**
+ * @file basic_medical_teleop.cpp
+ * @copyright Copyright (C) 2016-2024 Flexiv Ltd. All Rights Reserved.
+ * @brief example program for medical teleoperation
+ * @date 2023-08-22
+ */
+
+// Flexiv
+#include <flexiv/omni/teleop/Robot2RobotTeleop.hpp>
+#include <flexiv/base/StdLogger.hpp>
+#include <flexiv/omni/teleop/TeleopDefs.hpp>
+#include <getopt.h>
+#include <iostream>
+#include <thread>
+#include <chrono>
+namespace {
+// Preferred joint position
+constexpr std::array<double, flexiv::omni::teleop::k_jointDOF> k_preferredJntPos
+    = {-0.67, -0.98, 0.89, 1.55, -0.85, 0.54, 0.46};
+}
+
+void printHelp()
+{
+    // clang-format off
+    flexiv::base::log::error("Invalid program arguments");
+    flexiv::base::log::info("     -l     [necessary] serial number of local robot.");
+    flexiv::base::log::info("     -r     [necessary] serial number of remote robot.");
+    flexiv::base::log::info("     -c     [necessary] license config file path.");
+    flexiv::base::log::info("Usage: ./test_flexiv_omni_teleop -l Rizon4s-123456 -r Rizon4s-654321 -c <path/to/licensCfg.json>");
+    // clang-format on
+}
+
+struct option k_longOptions[] = {
+    // clang-format off
+    {"local SN",               required_argument,  0, 'l'},
+    {"remote SN",              required_argument,  0, 'r'},
+    {"config file of license", required_argument,  0, 'c'},
+    {0,                      0,                    0,  0 }
+    // clang-format on
+};
+
+int main(int argc, char* argv[])
+{
+    std::string remoteSN;
+    std::string localSN;
+    std::string licCfgPath;
+    bool isBlocking = true;
+    int opt = 0;
+    int longIndex = 0;
+    while ((opt = getopt_long_only(argc, argv, "", k_longOptions, &longIndex)) != -1) {
+        switch (opt) {
+            case 'r':
+                remoteSN = std::string(optarg);
+                flexiv::base::log::info("Remote SN: " + remoteSN);
+                break;
+            case 'l':
+                localSN = std::string(optarg);
+                flexiv::base::log::info("Local SN: " + localSN);
+                break;
+            case 'c':
+                licCfgPath = std::string(optarg);
+                flexiv::base::log::info("License config file: " + licCfgPath);
+                break;
+            default:
+                printHelp();
+                return 1;
+        }
+    }
+    if (localSN.empty() || remoteSN.empty() || licCfgPath.empty()) {
+        printHelp();
+        return 1;
+    }
+
+    try {
+
+        flexiv::omni::teleop::Robot2RobotTeleop teleop(localSN, remoteSN, licCfgPath);
+
+        // Enable teleop robots
+        teleop.enable();
+
+        // Init teleop robots
+        teleop.init();
+
+        // Set preferred joint position to a better configuration
+        teleop.setLocalNullSpacePosture(k_preferredJntPos);
+        teleop.setRemoteNullSpacePosture(k_preferredJntPos);
+
+        // Wait for elbow posture ready
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+        // Run teleop
+        flexiv::base::log::info("Omni-Teleop will run in background ... ");
+        teleop.run(isBlocking);
+
+    } catch (const std::exception& e) {
+        flexiv::base::log::error(e.what());
+        return 1;
+    }
+
+    return 0;
+}
